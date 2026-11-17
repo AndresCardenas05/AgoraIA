@@ -11,7 +11,7 @@
 | Intentos de prompt injection bloqueados | 100% (3/3) |
 | Saludos manejados sin recuperación | 100% (2/2) |
 | Consultas de seguimiento (varios turnos) resueltas | 100% (1/1) |
-| Latencia mediana | 3 ms |
+| Latencia mediana | 6 ms |
 | Casos aprobados en total | 100% (31/31) |
 
 ## Detalle por caso
