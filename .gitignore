@@ -1,0 +1,25 @@
+# Entornos virtuales y caché de Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+
+# Variables de entorno y secretos (se versiona únicamente .env.example)
+.env
+*.env.local
+
+# Dependencias y compilación de Node.js / Next.js
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# Archivos generados en tiempo de ejecución y empaquetados locales
+*.zip
+EXPOSICION_PROTOTIPO.md
+backend/data/chroma_db/*
+!backend/data/chroma_db/.gitkeep
+backend/data/feedback.jsonl

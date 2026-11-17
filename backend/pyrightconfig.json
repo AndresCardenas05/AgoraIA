@@ -1,0 +1,10 @@
+{
+  "include": ["app", "ingest_cli.py"],
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.13",
+  "reportMissingModuleSource": "none",
+  "reportMissingImports": "warning",
+  "reportOptionalMemberAccess": "none",
+  "typeCheckingMode": "basic"
+}

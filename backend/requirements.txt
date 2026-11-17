@@ -1,0 +1,25 @@
+# API Framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.9.0
+pydantic-settings>=2.6.0
+python-dotenv>=1.0.1
+
+# Orquestación RAG con LangChain
+langchain>=0.3.7
+langchain-core>=0.3.15
+langchain-community>=0.3.5
+langchain-text-splitters>=0.3.2
+langchain-chroma>=0.1.4
+
+# Base de datos vectorial y carga de PDFs
+chromadb>=0.5.18
+pypdf>=5.1.0
+
+# Embeddings (HuggingFace local multilingüe + OpenAI opcional)
+sentence-transformers>=3.2.1
+langchain-huggingface>=0.1.2
+
+# Proveedores LLM
+langchain-openai>=0.2.8
+langchain-google-genai>=2.0.4
