@@ -6,7 +6,7 @@
 
 ## 1. Stack Tecnológico
 
-| Capa | Tecnología | Uso en el proyecto |
+| Capa | Tecnología | Uso en el proyecto. |
 | :--- | :--- | :--- |
 | **Lenguaje backend** | Python 3.11 – 3.13 (recomendado) | Lógica RAG y API. |
 | **API** | FastAPI + Uvicorn | Endpoints `/api/chat`, `/api/ingest`, `/api/sources`, `/api/health`. |
