@@ -128,6 +128,11 @@ class Settings(BaseSettings):
     # CORS
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
+    # Integración complementaria: Argentina Data MCP (Legislación InfoLEG)
+    argentina_data_api_key: Optional[str] = None
+    argentina_data_base_url: str = "https://argentinadata.mymcps.dev/api/v1"
+    argentina_data_timeout_seconds: float = 6.0
+
     @property
     def pdf_dir_path(self) -> Path:
         path = Path(self.pdf_directory)
