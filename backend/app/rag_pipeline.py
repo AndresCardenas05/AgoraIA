@@ -8,6 +8,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.output_parsers import StrOutputParser
 
+from app.argentina_data import ArgentinaDataLegalResult, argentina_data_client
 from app.cases import find_related_cases
 from app.config import settings
 from app.ingestion import (
@@ -156,6 +157,50 @@ def _synthesize_grounded_offline_answer(
         "> *Nota técnica:* Respuesta generada en **modo extractivo local** (sin invocar LLM externo) porque "
         "`OPENAI_API_KEY` / `GOOGLE_API_KEY` aún no fueron configuradas en `backend/.env`. Añade tu clave "
         "y reinicia el backend para obtener síntesis redactada por GPT-4o-mini o Gemini sobre estos mismos fragmentos."
+    )
+
+
+def _synthesize_infoleg_offline_answer(
+    question: str, legal_res: ArgentinaDataLegalResult
+) -> str:
+    """Genera una respuesta en 4 puntos fundamentada en InfoLEG en modo offline."""
+    art_bullets = []
+    for art in legal_res.articulos:
+        art_bullets.append(f"- **{art.unidad.upper()}**: «{art.texto}»")
+    art_text = "\n".join(art_bullets)
+
+    vigencia_warning = ""
+    if legal_res.version == "original":
+        vigencia_warning = (
+            f"\n\n> ⚠️ **Aviso de vigencia y versión:** El texto de esta norma fue recuperado en su **versión original** "
+            f"tal como fue publicada. InfoLEG indica que la norma tiene estado *'{legal_res.estado_vigencia}'* y "
+            f"puede no reflejar modificaciones registradas"
+            + (f" ({legal_res.aviso_vigencia})" if legal_res.aviso_vigencia else "")
+            + f". No debe asumirse como versión vigente definitiva sin consultar la [Ficha Oficial en InfoLEG]({legal_res.url})."
+        )
+    else:
+        vigencia_warning = (
+            f"\n\n> ℹ️ **Fuente normativa:** Texto recuperado en versión **actualizada** desde la base oficial de InfoLEG "
+            f"([Ver texto oficial]({legal_res.url}))."
+        )
+
+    return (
+        "1. **Identificación del Dilema:**\n"
+        f"La consulta planteada (*«{question}»*) no fue cubierta por los documentos locales prioritarios de ÁgoraIA, "
+        f"pero fue identificada en la legislación argentina complementaria a través de **{legal_res.cita} ({legal_res.titulo})**.\n\n"
+        "2. **Marco Normativo / Base de Conocimiento:**\n"
+        f"A continuación se reproducen los artículos oficiales recuperados desde InfoLEG para **{legal_res.cita}**:\n\n"
+        f"{art_text}{vigencia_warning}\n\n"
+        "3. **Análisis de la Situación:**\n"
+        f"Desde una perspectiva ético-jurídica, la aplicación de {legal_res.cita} vincula el ejercicio periodístico y "
+        "comunicacional con las garantías constitucionales del Estado argentino. La norma recuperada debe interpretarse "
+        "en equilibrio con la libertad de expresión, el derecho a la información de la sociedad, la protección de derechos "
+        "personalísimos y los estándares de transparencia en entornos digitales e inteligencia artificial.\n\n"
+        "4. **Conclusión o Recomendación:**\n"
+        f"Se recomienda basar la práctica informativa y profesional en los principios tutelados por {legal_res.cita}, "
+        "garantizando la debida diligencia editorial y la verificación de fuentes. "
+        f"Para corroborar el alcance vigente de cualquier reforma o reglamentación posterior, consulte siempre el enlace oficial: "
+        f"[{legal_res.cita} en InfoLEG]({legal_res.url})."
     )
 
 
@@ -315,6 +360,70 @@ class AgoraRAGPipeline:
             )
         return messages
 
+    def _build_infoleg_response(
+        self,
+        question: str,
+        legal_res: ArgentinaDataLegalResult,
+        threshold: float,
+        local_score: float,
+        history: Optional[List[ChatTurn]] = None,
+    ) -> ChatResponse:
+        """Construye una respuesta estructurada trazable a partir de la legislación InfoLEG."""
+        citations: List[SourceCitation] = [
+            SourceCitation(
+                source_file=f"InfoLEG ({legal_res.norma_ref})",
+                document_title=f"{legal_res.cita} — {legal_res.titulo}",
+                category="Legislación Nacional (InfoLEG)",
+                page=None,
+                article_hint=art.unidad.title(),
+                relevance_score=0.85,
+                excerpt=art.texto if len(art.texto) <= 320 else art.texto[:317] + "...",
+            )
+            for art in legal_res.articulos
+        ]
+
+        if _has_real_api_key():
+            context_blocks = [
+                f"[FUENTE OFICIAL INFOLEG] {legal_res.cita}: {legal_res.titulo}\n"
+                f"Referencia: {legal_res.norma_ref} | Versión: {legal_res.version} | Estado vigencia: {legal_res.estado_vigencia}\n"
+                f"Enlace oficial: {legal_res.url}\n"
+                + (f"Aviso de vigencia: {legal_res.aviso_vigencia}\n" if legal_res.aviso_vigencia else "")
+                + "Artículos recuperados:\n"
+                + "\n\n".join(f"- {art.unidad.upper()}: {art.texto}" for art in legal_res.articulos)
+            ]
+            context_text = "\n\n".join(context_blocks)
+            if self._llm is None:
+                self._llm = build_llm()
+            chain = AGORA_RAG_PROMPT | self._llm | StrOutputParser()
+            answer = chain.invoke(
+                {
+                    "context": context_text,
+                    "question": question,
+                    "history": self._history_messages(history),
+                }
+            )
+            if legal_res.url not in answer:
+                answer += f"\n\n🔗 **Fuente oficial en InfoLEG:** [{legal_res.cita}]({legal_res.url})"
+            if legal_res.version == "original" and "modificaci" not in answer.lower():
+                answer += f"\n\n> ⚠️ *Nota sobre vigencia:* Texto recuperado en versión original. Consultar [InfoLEG]({legal_res.url}) para verificar modificaciones posteriores."
+        else:
+            answer = _synthesize_infoleg_offline_answer(question, legal_res)
+
+        structured = parse_structured_sections(answer)
+        return ChatResponse(
+            bot_name=CHATBOT_NAME,
+            question=question,
+            answer=answer,
+            is_grounded=True,
+            max_relevance_score=0.85,
+            threshold_used=threshold,
+            structured_sections=structured,
+            sources=citations,
+            response_type="grounded",
+            retrieval_query=None,
+            related_cases=[],
+        )
+
     def query(
         self,
         question: str,
@@ -378,6 +487,16 @@ class AgoraRAGPipeline:
 
         # Regla estricta: Cero Alucinaciones — cortar antes de invocar al LLM si no supera el umbral
         if not relevant_docs:
+            # Módulo complementario Argentina Data MCP: consultar exclusivamente cuando no se alcanza el umbral local
+            legal_result = argentina_data_client.query_legal_fallback(question)
+            if legal_result and legal_result.articulos:
+                return self._build_infoleg_response(
+                    question=question,
+                    legal_res=legal_result,
+                    threshold=effective_threshold,
+                    local_score=max_score,
+                    history=history,
+                )
             return _simple(OUT_OF_DOMAIN_RESPONSE, "no_info", score=max_score)
 
         if _has_real_api_key():
